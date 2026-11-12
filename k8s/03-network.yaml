@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: devops-task-service
+  namespace: devops-task
 spec:
   selector:
     app: web-service
@@ -15,6 +16,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: devops-task-ingress
+  namespace: devops-task
   annotations:
     kubernetes.io/ingress.class: traefik
 spec:
