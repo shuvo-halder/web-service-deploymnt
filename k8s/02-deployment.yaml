@@ -26,7 +26,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: app
-          image: ghcr.io/shuvo-halder/web-service-deploymnt:main # GitHub Actions will update this
+          image: ghcr.io/shuvo-halder/web-service-deploymnt:v1.0.0 
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
