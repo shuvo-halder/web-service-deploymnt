@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: devops-task-monitor
+  namespace: devops-task
+  labels:
+    release: kps # This label must match your Prometheus Operator's release name to be picked up
+spec:
+  selector:
+    matchLabels:
+      app: web-service # This matches the labels on your app's Service
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+  namespaceSelector:
+    matchNames:
+      - devops-task
