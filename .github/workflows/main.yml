@@ -56,44 +56,75 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy-to-ec2:
-    name: Deploy to EC2 via AWS SSM
+  deploy-to-k3s:
+    name: Deploy to K3s VPS
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Configure AWS Credentials using OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Deploy and Rollback via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Deploy via AWS Systems Manager (SSM)
-        run: |
-          NEW_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
-          OLD_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ secrets.PREVIOUS_STABLE_SHA }}"
-          
-          COMMAND="
-            docker pull $NEW_IMAGE || exit 1
-            docker stop web-app || true
-            docker rm web-app || true
-            docker run -d --name web-app -p 8080:8080 $NEW_IMAGE
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # Set the new image generated in the build step
+            NEW_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
             
-            echo 'Waiting for container to start...'
-            sleep 10
+            echo "Deploying $NEW_IMAGE to K3s..."
+            # Update the image in the Kubernetes deployment
+            kubectl set image deployment/devops-task-app app=$NEW_IMAGE
             
-            if ! curl -f -s http://localhost:8080/health; then
-              echo 'Health check failed! Rolling back to $OLD_IMAGE...'
-              docker stop web-app || true
-              docker rm web-app || true
-              docker run -d --name web-app -p 8080:8080 $OLD_IMAGE
+            echo "Waiting for rollout to complete (Health/Smoke Test)..."
+            # This checks the readiness and liveness probes. If they fail, this command fails.
+            if ! kubectl rollout status deployment/devops-task-app --timeout=60s; then
+              echo "Health check failed! Initiating rollback..."
+              kubectl rollout undo deployment/devops-task-app
+              echo "Rollback completed. Pipeline will fail."
               exit 1
             else
-              echo 'Deployment successful and healthy!'
+              echo "Deployment successful and healthy!"
             fi
-          "
+
+
+  # deploy-to-ec2:
+  #   name: Deploy to EC2 via AWS SSM
+  #   needs: build-and-push
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Configure AWS Credentials using OIDC
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
+
+  #     - name: Deploy via AWS Systems Manager (SSM)
+  #       run: |
+  #         NEW_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+  #         OLD_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ secrets.PREVIOUS_STABLE_SHA }}"
           
-          aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --parameters "commands=[$COMMAND]" \
-            --comment "Deploying commit ${{ github.sha }}"
+  #         COMMAND="
+  #           docker pull $NEW_IMAGE || exit 1
+  #           docker stop web-app || true
+  #           docker rm web-app || true
+  #           docker run -d --name web-app -p 8080:8080 $NEW_IMAGE
+            
+  #           echo 'Waiting for container to start...'
+  #           sleep 10
+            
+  #           if ! curl -f -s http://localhost:8080/health; then
+  #             echo 'Health check failed! Rolling back to $OLD_IMAGE...'
+  #             docker stop web-app || true
+  #             docker rm web-app || true
+  #             docker run -d --name web-app -p 8080:8080 $OLD_IMAGE
+  #             exit 1
+  #           else
+  #             echo 'Deployment successful and healthy!'
+  #           fi
+  #         "
+          
+  #         aws ssm send-command \
+  #           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+  #           --document-name "AWS-RunShellScript" \
+  #           --parameters "commands=[$COMMAND]" \
+  #           --comment "Deploying commit ${{ github.sha }}"
