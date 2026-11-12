@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devops-task-config
+data:
+  PORT: "8080"
+  LOG_LEVEL: "info"
+  ENVIRONMENT: "production"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: devops-task-secret
+type: Opaque
+stringData:
+  API_KEY: "supersecretkey"
