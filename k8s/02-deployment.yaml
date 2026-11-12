@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: devops-task-app
+  namespace: devops-task
   labels:
     app: web-service
 spec:
@@ -49,13 +50,13 @@ spec:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 25
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 25
             periodSeconds: 10
           volumeMounts:
             - name: tmp-volume

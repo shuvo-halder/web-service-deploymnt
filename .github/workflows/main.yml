@@ -73,13 +73,12 @@ jobs:
             
             echo "Deploying $NEW_IMAGE to K3s..."
             # Update the image in the Kubernetes deployment
-            kubectl set image deployment/devops-task-app app=$NEW_IMAGE
+            kubectl set image deployment/devops-task-app app=$NEW_IMAGE -n devops-task
             
             echo "Waiting for rollout to complete (Health/Smoke Test)..."
-            # This checks the readiness and liveness probes. If they fail, this command fails.
-            if ! kubectl rollout status deployment/devops-task-app --timeout=60s; then
+            if ! kubectl rollout status deployment/devops-task-app --timeout=60s -n devops-task; then
               echo "Health check failed! Initiating rollback..."
-              kubectl rollout undo deployment/devops-task-app
+              kubectl rollout undo deployment/devops-task-app -n devops-task
               echo "Rollback completed. Pipeline will fail."
               exit 1
             else
