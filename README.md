@@ -163,3 +163,22 @@ To run the script every 5 minutes and rotate logs, add this to `crontab -e`:
 
 
 * **Network Isolation:** Internal observability components (Prometheus, Alloy, Loki) communicate securely over the internal Kubernetes network. Only Grafana is exposed via NodePort.
+
+
+## Project Screenshots
+
+### 1. Kubernetes Cluster Infrastructure
+![K3s Nodes and Resources](images/k8s-resources.png)
+
+**Host Metrics Dashboard:**
+![Host Dashboard](images/host-dashboard.png)
+
+**Container Metrics Dashboard:**
+![Container Dashboard](images/container-dashboard.png)
+
+### 2. Application & Automation
+**API Health Check:**
+![Health Check](images/api-health.png)
+
+**System Health Script Execution:**
+![System Health Script](images/system-health-script.png)
