@@ -59,7 +59,7 @@ The application is deployed on a highly available K3s cluster. All Kubernetes ma
 
 I deployed the full monitoring stack directly into the Kubernetes cluster using Helm charts, satisfying the bonus requirement.
 
-**1. Install Prometheus Stack & Grafana (Exposed on NodePort 30555):**
+**1. Install Prometheus Stack & Grafana (Exposed on NodePort 31204):**
 ```bash
 kubectl create namespace monitoring
 
@@ -75,7 +75,7 @@ helm install kps prometheus-community/kube-prometheus-stack \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
   --set grafana.adminPassword="YourSecurePassword" \
   --set grafana.service.type=NodePort \
-  --set grafana.service.nodePort=30555
+  --set grafana.service.nodePort=31204
 
 ```
 
@@ -108,7 +108,7 @@ kubectl apply -f k8s/07-alerts.yaml
 ```
 
 **Accessing the Dashboards:**
-Navigate to `http://103.131.144.65:30555`. Login with `admin` and configure Loki as a data source using `http://loki-gateway.monitoring.svc.cluster.local/`.
+Navigate to `http://103.131.144.65:31204`. Login with `admin` and configure Loki as a data source using `http://loki-gateway.monitoring.svc.cluster.local/`.
 
 ---
 
