@@ -1,79 +1,120 @@
-
 # Web Service Deployment - DevOps Assessment
 
-This repository demonstrates a complete, automated DevOps lifecycle for deploying a Node.js web application on a local K3s cluster. It encompasses containerization, Kubernetes orchestration, CI/CD automation via GitHub Actions, system health monitoring, and a comprehensive observability stack.
+This repository contains the complete end-to-end deployment of a Node.js web application. The project is structured exactly according to the assessment guidelines, covering containerization, CI/CD, Kubernetes orchestration, observability, and automation.
+
+
+## Architecture & Network Topology
+
+Instead of relying on a managed cloud service, this project is deployed on a custom-built, bare-metal K3s cluster to demonstrate real-world Kubernetes administration and network routing. 
+
+The cluster consists of 3 nodes (each provisioned with **4 vCPU** and **8GB RAM**). The control plane is exposed via a public IP, while the worker nodes communicate securely over a private network interface.
+
+| Node Name | Role | Interface | IP Address (Node-IP) | OS Version |
+| :--- | :--- | :--- | :--- | :--- |
+| `kube-server` | Control Plane | `ens11` | `103.131.144.65` (Public) | Debian 12 |
+| `kube-worker-1` | Worker/Agent | `ens3` | `10.131.144.162` (Private) | Debian 12 |
+| `kube-worker-2` | Worker/Agent | `ens3` | `10.131.144.176` (Private) | Debian 12 |
+
 
 ---
 
-## 🏗️ Architecture Overview
+## Step 1: Application & Containerization
 
-The system is built on a **High-Availability (HA) K3s Cluster** running on a remote VPS. The architecture flows as follows:
-
-1. **Development & Version Control:** Code is pushed to the `main` branch of this GitHub repository.
-2. **CI/CD Pipeline (GitHub Actions):** 
-   - Builds a Docker image using Docker Buildx.
-   - Pushes the image to GitHub Container Registry (GHCR).
-   - Authenticates with the K3s VPS via SSH.
-   - Triggers a rolling update of the Kubernetes Deployment.
-3. **Container Orchestration (Kubernetes):**
-   - **Namespace:** All resources are isolated within the `devops-task` namespace.
-   - **Workload:** A Deployment running 2 replicas of the Node.js application for high availability.
-   - **Configuration:** Environment variables and secrets are managed via `ConfigMap` and `Secret`.
-   - **Scaling:** Horizontal Pod Autoscaler (HPA) automatically scales replicas based on CPU usage.
-4. **Traffic Routing:** An Ingress controller routes external HTTP traffic to the application's ClusterIP Service.
-5. **Observability (Monitoring & Logging):**
-   - **Metrics:** Prometheus scrapes application metrics via a `ServiceMonitor`.
-   - **Logging:** Grafana Alloy parses JSON logs and forwards them to Loki.
-   - **Visualization:** Grafana provides real-time dashboards for the Application, Host, and Containers.
+The core application is a Node.js web service featuring `/`, `/health`, and `/metrics` endpoints.
+- **Dockerfile:** Utilizes a multi-stage build starting from `node:20-alpine` to keep the final image size minimal and secure. It runs as a non-root user and includes proper OCI labels.
+- **Local Development:** A `docker-compose.yml` is provided in the root directory to run the application and test health checks locally.
 
 ---
 
-## 🚀 Setup & Deployment Guide
+## Step 2: CI/CD Pipeline (GitHub Actions)
 
-### Prerequisites
-- A running K3s cluster.
-- `kubectl` configured with cluster access.
-- GitHub Personal Access Token (PAT) with `write:packages` permission (for GHCR).
+The CI/CD pipeline is fully automated using GitHub Actions.
+- **On Pull Request:** Triggers linting for the application code and Dockerfile to ensure code quality before merging.
+- **On Push to Main:** 
+  1. Builds a multi-architecture Docker image (`linux/amd64` and `linux/arm64`) with layer caching.
+  2. Tags the image with the Git commit SHA and pushes it to GitHub Container Registry (GHCR).
+  3. Authenticates with the production K3s server via SSH and triggers a zero-downtime rolling update.
 
-### 1. Initial Infrastructure Setup
-Ensure your cluster is ready and apply the foundational configurations:
+---
+
+## Step 3: Infrastructure as Code (Terraform)
+
+To demonstrate real-world, self-hosted cluster management, this project is currently deployed on a bare-metal Ubuntu K3s VPS instead of a managed cloud service. 
+
+However, to fulfill the Infrastructure as Code requirement, complete Terraform configurations are provided in the `/terraform` directory. This code provisions the necessary AWS EC2 instance, Security Groups, and IAM instance profiles required to run this stack on AWS.
+
+---
+
+## Step 4: Kubernetes Deployment
+
+The application is deployed on a highly available K3s cluster. All Kubernetes manifests are located in the `/k8s` directory.
+- **Workload:** A Deployment running 2 replicas with a rolling update strategy.
+- **Configuration:** Environment variables are securely injected using `ConfigMap` and `Secret`.
+- **Scaling:** A Horizontal Pod Autoscaler (HPA) is configured to scale based on CPU usage.
+- **Routing:** External traffic is routed through a Traefik Ingress controller mapped to `devops-task.velmorabeauty-bd.com`.
+
+---
+
+## Step 5: Observability Stack (Bonus Implemented)
+
+I deployed the full monitoring stack directly into the Kubernetes cluster using Helm charts, satisfying the bonus requirement.
+
+**1. Install Prometheus Stack & Grafana (Exposed on NodePort 30555):**
 ```bash
-git clone [https://github.com/shuvo-halder/web-service-deploymnt.git](https://github.com/shuvo-halder/web-service-deploymnt.git)
-cd web-service-deploymnt
-kubectl apply -f k8s/00-namespace.yaml
-kubectl apply -f k8s/01-config.yaml
+kubectl create namespace monitoring
+
+helm repo add prometheus-community [https://prometheus-community.github.io/helm-charts](https://prometheus-community.github.io/helm-charts)
+helm repo add grafana [https://grafana.github.io/helm-charts](https://grafana.github.io/helm-charts)
+helm repo update
+
+helm install kps prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --set kubeControllerManager.enabled=false \
+  --set kubeEtcd.enabled=false \
+  --set kubeScheduler.enabled=false \
+  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+  --set grafana.adminPassword="YourSecurePassword" \
+  --set grafana.service.type=NodePort \
+  --set grafana.service.nodePort=30555
 
 ```
 
-### 2. Application Deployment
-
-Apply the core application manifests. Note: The actual image tag will be managed and updated by the CI/CD pipeline.
+**2. Install Loki (Single Binary Mode):**
 
 ```bash
-kubectl apply -f k8s/02-deployment.yaml
-kubectl apply -f k8s/03-network.yaml
-kubectl apply -f k8s/04-hpa.yaml
+helm install loki grafana/loki \
+  --namespace monitoring \
+  --set deploymentMode=SingleBinary \
+  --set loki.auth_enabled=false \
+  --set loki.commonConfig.replication_factor=1 \
+  --set loki.storage.type=filesystem \
+  --set singleBinary.replicas=1 \
+  --set read.replicas=0 \
+  --set write.replicas=0 \
+  --set backend.replicas=0 \
+  --set loki.useTestSchema=true
 
 ```
 
-### 3. Observability Setup (Step 5)
-
-Apply the monitoring configurations to connect the application to the Prometheus Operator and Loki stack:
+**3. Install Grafana Alloy & Apply Configurations:**
 
 ```bash
+helm install alloy grafana/alloy --namespace monitoring
+
 kubectl apply -f k8s/05-monitor.yaml
 kubectl apply -f k8s/06-alloy-config.yaml
 kubectl apply -f k8s/07-alerts.yaml
 
 ```
 
-*Note: Ensure the Prometheus Operator and Grafana Alloy are pre-installed in the `monitoring` namespace.*
+**Accessing the Dashboards:**
+Navigate to `http://103.131.144.65:30555`. Login with `admin` and configure Loki as a data source using `http://loki-gateway.monitoring.svc.cluster.local/`.
 
 ---
 
-## 🤖 System Health Automation (Step 6)
+## Step 6: Linux Automation Scripting
 
-A bash script (`scripts/system_health.sh`) is provided to monitor host-level metrics (CPU, Memory, Disk, Load).
+A production-grade bash script (`scripts/system_health.sh`) is provided to monitor host-level metrics (CPU, RAM, Disk, Load) and track top processes.
 
 **Manual Execution:**
 
@@ -83,54 +124,42 @@ chmod +x scripts/system_health.sh
 
 ```
 
-**Automated Execution (Cron):**
-To run the script every 5 minutes and log the output, add the following to your server's crontab (`crontab -e`):
+**Automated Cron Execution:**
+To run the script every 5 minutes and rotate logs, add this to `crontab -e`:
 
 ```bash
-*/5 * * * * /root/web-service-deploymnt/scripts/system_health.sh --disk 80 --cpu 90 --mem 85 >> /var/log/health_cron_error.log 2>&1
+*/5 * * * * /root/web-service-deploymnt/scripts/system_health.sh --disk 80 --cpu 90 --mem 85 >> /var/log/health_cron.log 2>&1
 
 ```
 
 ---
 
-## 🔧 Troubleshooting Guide
+## Step 7: Documentation & Architecture Details
 
-### Issue: Pods stuck in `ImagePullBackOff` or `ErrImagePull`
+### Design Decisions & Trade-offs
 
-**Cause:** The K3s node cannot download the image from GHCR. This is typically due to the package visibility being set to "Private".
-**Solution:**
+* **Base Image:** I chose `node:20-alpine` over a standard Debian image to significantly reduce the final image size and limit the security attack surface.
 
-1. Navigate to your GitHub Profile -> **Packages**.
-2. Select the `web-service-deploymnt` container package.
-3. Go to **Package Settings** -> **Change package visibility** and set it to **Public**.
-4. Re-run the GitHub Actions workflow.
 
-### Issue: Pods stuck in `CreateContainerConfigError`
+* **Loki Labeling:** Parsed JSON logs to extract only `level` and `request_path` as labels. This keeps label cardinality low to prevent Loki query performance degradation, while still allowing quick filtering of 5xx errors on specific routes.
 
-**Cause:** The application pod is missing its required `ConfigMap` or `Secret`.
-**Solution:** Ensure the configuration files are applied to the correct namespace:
 
-```bash
-kubectl apply -f k8s/01-config.yaml -n devops-task
-kubectl get configmap,secret -n devops-task
 
-```
+### Deployment & Rollback Strategy
 
-### Issue: GitHub Actions Deployment Step Fails (Timeout)
+* **Deployment:** The GitHub Action pipeline automatically builds, tags, and applies the new Kubernetes manifests.
 
-**Cause:** The CI/CD pipeline rolled back the deployment because the pods failed the health check (`/health`) within 60 seconds.
-**Solution:**
 
-1. Check the logs of the failing pod: `kubectl logs deployment/devops-task-app -n devops-task --previous`
-2. If the application is taking too long to start, increase the `initialDelaySeconds` for the `livenessProbe` and `readinessProbe` in `k8s/02-deployment.yaml`.
+* **Rollback:** The pipeline relies on `kubectl rollout status` with a timeout threshold. If a newly deployed pod fails its `/health` liveness/readiness probes (e.g., app crash), the deployment is marked as failed. The pipeline catches this and instantly executes `kubectl rollout undo deployment/devops-task-app` to revert to the last working state, ensuring zero downtime.
 
----
 
-## 📊 Dashboards
 
-JSON exports of the Grafana dashboards required for this project are located in the `/observability` directory:
+### Security Considerations
 
-* `application-dashboard.json`: Node.js specific metrics.
-* `host-dashboard.json`: Node exporter metrics (CPU, RAM, Disk).
-* `container-dashboard.json`: cAdvisor metrics and Loki JSON logs.
+* **Secrets Management:** Sensitive keys are managed via Kubernetes `Secret` and passed as environment variables. CI/CD SSH keys are securely stored in GitHub Secrets.
 
+
+* **Least Privilege:** The Node.js application container runs as a non-root user.
+
+
+* **Network Isolation:** Internal observability components (Prometheus, Alloy, Loki) communicate securely over the internal Kubernetes network. Only Grafana is exposed via NodePort.
