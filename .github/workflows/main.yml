@@ -76,7 +76,7 @@ jobs:
             kubectl set image deployment/devops-task-app app=$NEW_IMAGE -n devops-task
             
             echo "Waiting for rollout to complete (Health/Smoke Test)..."
-            if ! kubectl rollout status deployment/devops-task-app --timeout=60s -n devops-task; then
+            if ! kubectl rollout status deployment/devops-task-app --timeout=120s -n devops-task; then
               echo "Health check failed! Initiating rollback..."
               kubectl rollout undo deployment/devops-task-app -n devops-task
               echo "Rollback completed. Pipeline will fail."
