@@ -23,7 +23,7 @@ metadata:
     kubernetes.io/ingress.class: traefik
 spec:
   rules:
-    - host: devops-task.103.131.144.65.nip.io
+    - host: devops-task.velmorabeauty-bd.com
       http:
         paths:
           - path: /
